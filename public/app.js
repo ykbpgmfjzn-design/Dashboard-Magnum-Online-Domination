@@ -100,6 +100,7 @@ const translations = {
     newUsersHeader: "Новые",
     avgEngagementHeader: "Среднее время вовлеченности",
     engagementRateHeader: "Коэффициент вовлеченности",
+    shareHeader: "Доля",
     channelHeader: "Канал",
     remainingLabel: "Осталось",
     forecastLabel: "Прогноз",
@@ -169,6 +170,7 @@ const translations = {
     newUsersHeader: "New",
     avgEngagementHeader: "Avg engagement",
     engagementRateHeader: "Engagement rate",
+    shareHeader: "Share",
     channelHeader: "Channel",
     remainingLabel: "Remaining",
     forecastLabel: "Forecast",
@@ -537,6 +539,7 @@ function renderTables(data) {
   const channelRows = (data.channels || []).map((c) => [
     localizeChannelLabel(c.label),
     formatNumber(c.users ?? c.value * (data.totalUsers || 0)),
+    formatPercent(c.value),
     formatPercent(c.engagementRate),
     formatNumber(c.newUsers),
   ]);
@@ -545,6 +548,7 @@ function renderTables(data) {
     [
       t("channelHeader"),
       t("usersHeader"),
+      t("shareHeader"),
       t("engagementRateHeader"),
       t("newUsersHeader"),
     ],
