@@ -531,6 +531,24 @@ function renderCharts(data) {
         legend: { display: false },
         tooltip: { enabled: false },
       },
+      animation: {
+        onComplete: function(animation) {
+          const chart = animation.chart;
+          const ctx = chart.ctx;
+          const width = chart.width;
+          const height = chart.height;
+          const fontSize = (height / 114).toFixed(2);
+          ctx.restore();
+          ctx.font = fontSize + "em sans-serif";
+          ctx.textBaseline = "middle";
+          ctx.fillStyle = "#111827";
+          const text = formatPercent(progress);
+          const textX = Math.round((width - ctx.measureText(text).width) / 2);
+          const textY = height / 2;
+          ctx.fillText(text, textX, textY);
+          ctx.save();
+        }
+      }
     },
   });
 }
