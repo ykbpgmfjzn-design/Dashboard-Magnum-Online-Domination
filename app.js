@@ -2,7 +2,6 @@ const GOAL_USERS = 60000;
 const usersChartEl = document.getElementById("usersChart");
 const channelsChartEl = document.getElementById("channelsChart");
 const channelsTrendChartEl = document.getElementById("channelsTrendChart");
-const goalGaugeChartEl = document.getElementById("goalGaugeChart");
 const channelsTable = document.getElementById("channelsTable");
 const sourcesTable = document.getElementById("sourcesTable");
 const pagesTable = document.getElementById("pagesTable");
@@ -33,7 +32,6 @@ const languageSelect = document.getElementById("languageSelect");
 let usersChart;
 let channelsChart;
 let channelsTrendChart;
-let goalGaugeChart;
 
 const translations = {
   ru: {
@@ -42,8 +40,8 @@ const translations = {
     tabOverview: "CEO Overview",
     tabMarketing: "Marketing",
     tabContent: "Content",
-    periodLabel: "Период",
-    period30: "Последние 30 дней",
+    periodLabel: "Период",    periodToday: "Сегодня",
+    periodYesterday: "Вчера",    period30: "Последние 30 дней",
     period90: "Последние 90 дней",
     period365: "Последние 12 месяцев",
     channelLabel: "Канал",
@@ -114,6 +112,8 @@ const translations = {
     tabMarketing: "Marketing",
     tabContent: "Content",
     periodLabel: "Period",
+    periodToday: "Today",
+    periodYesterday: "Yesterday",
     period30: "Last 30 days",
     period90: "Last 90 days",
     period365: "Last 12 months",
@@ -396,7 +396,8 @@ function generateMockData(days, channel) {
 }
 
 function renderKpis(data) {
-  const progress = data.totalUsers / GOAL_USERS;
+  const monthlyForecast = Math.round((data.totalUsers / data.days) * 30);
+  const progress = monthlyForecast / GOAL_USERS;
   const sessionsPerUser = data.sessions / data.totalUsers;
   const newUsersShare = data.newUsers / data.totalUsers;
   const engagementRate = data.engagedSessions / data.sessions;
@@ -412,7 +413,6 @@ function renderKpis(data) {
   kpiGoalProgress.textContent = formatPercent(progress);
   kpiGoalBar.style.width = `${Math.min(progress * 100, 100)}%`;
 
-  const monthlyForecast = Math.round((data.totalUsers / data.days) * 30);
   kpiGoalForecast.textContent = `${t("forecastLabel")}: ${formatNumber(
     monthlyForecast
   )}${t("perMonthLabel")}`;
@@ -458,8 +458,33 @@ function renderCharts(data) {
         legend: { display: false },
       },
       scales: {
-        x: { display: false },
-        y: { grid: { color: "#eef2f8" } },
+        x: {
+          display: true,
+          title: {
+            display: true,
+            text: "Date",
+            color: "#0f1a2a",
+            font: { size: 12, weight: 500 },
+          },
+          ticks: {
+            color: "#0f1a2a",
+            maxRotation: 45,
+            minRotation: 0,
+          },
+          grid: { color: "#eef2f8" },
+        },
+        y: {
+          title: {
+            display: true,
+            text: "Number of Users",
+            color: "#0f1a2a",
+            font: { size: 12, weight: 500 },
+          },
+          ticks: {
+            color: "#0f1a2a",
+          },
+          grid: { color: "#eef2f8" },
+        },
       },
     },
   });
@@ -509,28 +534,7 @@ function renderCharts(data) {
     },
   });
 
-  if (goalGaugeChart) goalGaugeChart.destroy();
-  const progress = data.totalUsers / GOAL_USERS;
-  goalGaugeChart = new Chart(goalGaugeChartEl, {
-    type: "doughnut",
-    data: {
-      labels: [t("kpiGoalLabel"), t("remainingLabel")],
-      datasets: [
-        {
-          data: [Math.min(progress, 1), Math.max(1 - progress, 0)],
-          backgroundColor: ["#2251ff", "#eef2f8"],
-          borderWidth: 0,
-        },
-      ],
-    },
-    options: {
-      cutout: "75%",
-      plugins: {
-        legend: { display: false },
-        tooltip: { enabled: false },
-      },
-    },
-  });
+
 }
 
 function renderTables(data) {
@@ -658,8 +662,17 @@ async function fetchDashboardData(days, channel) {
 }
 
 async function loadDashboard() {
-  const days = Number(rangeSelect.value);
+  let days = Number(rangeSelect.value);
   const channel = channelSelect.value;
+  
+  // If rangeSelect value is a string like "quarter" or "half", handle it
+  if (isNaN(days)) {
+    const rangeValue = rangeSelect.value;
+    if (rangeValue === "quarter") days = 90;
+    else if (rangeValue === "half") days = 180;
+    else days = 30; // default
+  }
+  
   try {
     const data = await fetchDashboardData(days, channel);
     lastData = data;

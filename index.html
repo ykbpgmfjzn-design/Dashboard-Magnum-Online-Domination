@@ -21,8 +21,8 @@
       <div class="filters">
         <label class="filter">
           <span data-i18n="periodLabel">Период</span>
-          <select id="rangeSelect">
-            <option value="30" data-i18n="period30">Последние 30 дней</option>
+          <select id="rangeSelect">            <option value="1" data-i18n="periodToday">Today</option>
+            <option value="2" data-i18n="periodYesterday">Yesterday</option>            <option value="30" data-i18n="period30">Последние 30 дней</option>
             <option value="90" data-i18n="period90" selected>
               Последние 90 дней
             </option>
@@ -135,18 +135,13 @@
         </section>
 
         <section class="grid">
-          <div class="card span-8">
+          <div class="card span-12">
             <div class="card-title" data-i18n="usersTrendTitle">
               Динамика пользователей
             </div>
             <canvas id="usersChart" height="140"></canvas>
           </div>
-          <div class="card span-4">
-            <div class="card-title" data-i18n="goalGaugeTitle">
-              Прогресс к цели
-            </div>
-            <canvas id="goalGaugeChart" height="180"></canvas>
-          </div>
+
           <div class="card span-12">
             <div class="card-title" data-i18n="channelsTableTitle">
               Каналы

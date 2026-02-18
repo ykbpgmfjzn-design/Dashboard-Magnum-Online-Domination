@@ -18,19 +18,91 @@ if (process.env.GA4_PROPERTIES_JSON) {
 // Default property for backward compatibility
 const defaultPropertyId = process.env.GA4_PROPERTY_ID || Object.values(properties)[0];
 
-// Google Auth: Prefer JSON string from env (for Cloud), fallback to file (for Local)
-let clientConfig = {};
+// Load service account mappings
+let serviceAccountMap = {};
+if (process.env.GA4_SERVICE_ACCOUNTS_JSON) {
+  try {
+    serviceAccountMap = JSON.parse(process.env.GA4_SERVICE_ACCOUNTS_JSON);
+  } catch (e) {
+    console.error("Failed to parse GA4_SERVICE_ACCOUNTS_JSON");
+  }
+}
+
+// Load service account credentials for different GCP projects
+let mainCredentials = {};
+let anyoaCredentials = {};
+
+if (process.env.GA4_MAIN_CREDENTIALS_JSON) {
+  try {
+    mainCredentials = JSON.parse(process.env.GA4_MAIN_CREDENTIALS_JSON);
+  } catch (e) {
+    console.error("Failed to parse GA4_MAIN_CREDENTIALS_JSON");
+  }
+}
 if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
   try {
-    clientConfig.credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
+    mainCredentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
   } catch (e) {
     console.error("Failed to parse GOOGLE_APPLICATION_CREDENTIALS_JSON");
   }
-} else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-  clientConfig.keyFilename = process.env.GOOGLE_APPLICATION_CREDENTIALS;
 }
 
-const client = new BetaAnalyticsDataClient(clientConfig);
+if (process.env.GA4_ANOYA_CREDENTIALS_JSON) {
+  try {
+    const anoyaJson = JSON.parse(process.env.GA4_ANOYA_CREDENTIALS_JSON);
+    // Only use if it has valid credentials (not TBD placeholders)
+    if (anoyaJson.private_key && !anoyaJson.private_key.includes("TBD")) {
+      anyoaCredentials = anoyaJson;
+    }
+  } catch (e) {
+    console.error("Failed to parse GA4_ANOYA_CREDENTIALS_JSON");
+  }
+}
+
+let shishacoolCredentials = {};
+
+if (process.env.GA4_SHISHACOOL_CREDENTIALS_JSON) {
+  try {
+    shishacoolCredentials = JSON.parse(process.env.GA4_SHISHACOOL_CREDENTIALS_JSON);
+  } catch (e) {
+    console.error("Failed to parse GA4_SHISHACOOL_CREDENTIALS_JSON");
+  }
+}
+
+// Create client instances for each service account
+const clients = {};
+
+// Main client
+if (mainCredentials && mainCredentials.private_key) {
+  clients.main = new BetaAnalyticsDataClient({ credentials: mainCredentials });
+} else {
+  // Fallback: try keyFilename
+  const keyFile = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  if (keyFile) {
+    clients.main = new BetaAnalyticsDataClient({ keyFilename: keyFile });
+  }
+}
+
+// Anoya client (if credentials available)
+if (anyoaCredentials && anyoaCredentials.private_key) {
+  clients.anoya = new BetaAnalyticsDataClient({ credentials: anyoaCredentials });
+}
+
+// Shisha Cool client (if credentials available)
+if (shishacoolCredentials && shishacoolCredentials.private_key) {
+  clients.shishacool = new BetaAnalyticsDataClient({ credentials: shishacoolCredentials });
+}
+
+// Get the appropriate client for a property
+function getClientForProperty(propertyKey) {
+  const accountKey = serviceAccountMap[propertyKey] || "main";
+  const client = clients[accountKey];
+  if (!client) {
+    // Fallback to main
+    return clients.main;
+  }
+  return client;
+}
 
 function formatDate(daysAgo) {
   const d = new Date();
@@ -77,16 +149,17 @@ function buildChannelFilter(channel) {
   };
 }
 
-async function runReport(params) {
+async function runReport(client, params) {
   const [response] = await client.runReport(params);
   return response;
 }
 
-async function fetchPropertyData(propertyId, days, channel, startDate, endDate) {
+async function fetchPropertyData(propertyId, propertyKey, days, channel, startDate, endDate) {
+  const client = getClientForProperty(propertyKey);
   const dateRange = getDateRange(days, startDate, endDate);
   const dimensionFilter = buildChannelFilter(channel);
 
-  const totalsReport = await runReport({
+  const totalsReport = await runReport(client, {
     property: `properties/${propertyId}`,
     dateRanges: [dateRange],
     metrics: [
@@ -107,7 +180,7 @@ async function fetchPropertyData(propertyId, days, channel, startDate, endDate) 
   const totalEngagement = toNumber(totalsRow[4]?.value);
   const avgTime = sessions ? totalEngagement / sessions : 0;
 
-  const dailyReport = await runReport({
+  const dailyReport = await runReport(client, {
     property: `properties/${propertyId}`,
     dateRanges: [dateRange],
     metrics: [{ name: "activeUsers" }],
@@ -123,7 +196,7 @@ async function fetchPropertyData(propertyId, days, channel, startDate, endDate) 
     toNumber(row.metricValues?.[0]?.value)
   );
 
-  const channelsReport = await runReport({
+  const channelsReport = await runReport(client, {
     property: `properties/${propertyId}`,
     dateRanges: [dateRange],
     metrics: [
@@ -142,7 +215,7 @@ async function fetchPropertyData(propertyId, days, channel, startDate, endDate) 
     engagementRate: toNumber(row.metricValues?.[2]?.value),
   }));
 
-  const sourcesReport = await runReport({
+  const sourcesReport = await runReport(client, {
     property: `properties/${propertyId}`,
     dateRanges: [dateRange],
     metrics: [
@@ -163,7 +236,7 @@ async function fetchPropertyData(propertyId, days, channel, startDate, endDate) 
     toNumber(row.metricValues?.[2]?.value),
   ]);
 
-  const pagesReport = await runReport({
+  const pagesReport = await runReport(client, {
     property: `properties/${propertyId}`,
     dateRanges: [dateRange],
     metrics: [
@@ -193,7 +266,7 @@ async function fetchPropertyData(propertyId, days, channel, startDate, endDate) 
     ];
   });
 
-  const channelsTrendReport = await runReport({
+  const channelsTrendReport = await runReport(client, {
     property: `properties/${propertyId}`,
     dateRanges: [dateRange],
     metrics: [{ name: "activeUsers" }],
@@ -230,17 +303,27 @@ async function fetchPropertyData(propertyId, days, channel, startDate, endDate) 
   };
 }
 
-async function aggregatePropertyData(propertyIds, days, channel, startDate, endDate) {
-  const allData = await Promise.all(
-    propertyIds.map((id) => fetchPropertyData(id, days, channel, startDate, endDate))
+async function aggregatePropertyData(propertyIds, propertyKeys, days, channel, startDate, endDate) {
+  const allData = await Promise.allSettled(
+    propertyIds.map((id, idx) => fetchPropertyData(id, propertyKeys[idx], days, channel, startDate, endDate))
   );
 
+  // Filter out failed properties
+  const successfulData = allData
+    .map((result, idx) => ({ 
+      data: result.status === 'fulfilled' ? result.value : null,
+      key: propertyKeys[idx],
+      status: result.status
+    }))
+    .filter(item => item.status === 'fulfilled')
+    .map(item => item.data);
+
   // Aggregate metrics
-  const totalUsers = allData.reduce((sum, d) => sum + d.totalUsers, 0);
-  const newUsers = allData.reduce((sum, d) => sum + d.newUsers, 0);
-  const sessions = allData.reduce((sum, d) => sum + d.sessions, 0);
-  const engagedSessions = allData.reduce((sum, d) => sum + d.engagedSessions, 0);
-  const totalEngagement = allData.reduce(
+  const totalUsers = successfulData.reduce((sum, d) => sum + d.totalUsers, 0);
+  const newUsers = successfulData.reduce((sum, d) => sum + d.newUsers, 0);
+  const sessions = successfulData.reduce((sum, d) => sum + d.sessions, 0);
+  const engagedSessions = successfulData.reduce((sum, d) => sum + d.engagedSessions, 0);
+  const totalEngagement = successfulData.reduce(
     (sum, d) => sum + d.avgTime * d.sessions,
     0
   );
@@ -248,7 +331,7 @@ async function aggregatePropertyData(propertyIds, days, channel, startDate, endD
 
   // Aggregate daily data
   const dailyMap = {};
-  allData.forEach((data) => {
+  successfulData.forEach((data) => {
     data.dailyDates.forEach((date, idx) => {
       if (!dailyMap[date]) dailyMap[date] = 0;
       dailyMap[date] += data.dailyUsers[idx];
@@ -259,7 +342,7 @@ async function aggregatePropertyData(propertyIds, days, channel, startDate, endD
 
   // Aggregate channels
   const channelMap = {};
-  allData.forEach((data) => {
+  successfulData.forEach((data) => {
     data.channels.forEach((ch) => {
       if (!channelMap[ch.name]) {
         channelMap[ch.name] = {
@@ -275,7 +358,7 @@ async function aggregatePropertyData(propertyIds, days, channel, startDate, endD
   });
   // Calculate weighted average engagement rate
   Object.values(channelMap).forEach((ch) => {
-    const totalForChannel = allData.reduce((sum, d) => {
+    const totalForChannel = successfulData.reduce((sum, d) => {
       const found = d.channels.find((c) => c.name === ch.name);
       return sum + (found ? found.engagementRate * found.users : 0);
     }, 0);
@@ -285,7 +368,7 @@ async function aggregatePropertyData(propertyIds, days, channel, startDate, endD
 
   // Aggregate sources
   const sourceMap = {};
-  allData.forEach((data) => {
+  successfulData.forEach((data) => {
     data.sources.forEach((source) => {
       const name = source[0];
       if (!sourceMap[name]) sourceMap[name] = [name, 0, 0, 0];
@@ -299,7 +382,7 @@ async function aggregatePropertyData(propertyIds, days, channel, startDate, endD
 
   // Aggregate pages
   const pageMap = {};
-  allData.forEach((data) => {
+  successfulData.forEach((data) => {
     data.pages.forEach((page) => {
       const title = page[0];
       if (!pageMap[title]) pageMap[title] = [title, 0, 0, 0, 0];
@@ -313,7 +396,7 @@ async function aggregatePropertyData(propertyIds, days, channel, startDate, endD
 
   // Aggregate channel trends
   const trendMap = {};
-  allData.forEach((data) => {
+  successfulData.forEach((data) => {
     data.channelsTrend.forEach((row) => {
       const date = row[0];
       if (!trendMap[date]) trendMap[date] = [date, 0, 0, 0, 0, 0, 0];
@@ -355,9 +438,10 @@ module.exports = async (req, res) => {
     
     // Check if overview mode
     if (selectedProperty === "overview") {
-      // Get all property IDs
-      const propertyIds = Object.values(properties);
-      data = await aggregatePropertyData(propertyIds, days, channel, startDate, endDate);
+      // Get all property IDs and keys
+      const propertyKeys = Object.keys(properties);
+      const propertyIds = propertyKeys.map(key => properties[key]);
+      data = await aggregatePropertyData(propertyIds, propertyKeys, days, channel, startDate, endDate);
     } else {
       // Single property mode
       const propertyId = properties[selectedProperty] || defaultPropertyId;
@@ -366,7 +450,7 @@ module.exports = async (req, res) => {
         return res.status(400).json({ error: "Invalid property selected" });
       }
       
-      data = await fetchPropertyData(propertyId, days, channel, startDate, endDate);
+      data = await fetchPropertyData(propertyId, selectedProperty, days, channel, startDate, endDate);
     }
     
     res.json({

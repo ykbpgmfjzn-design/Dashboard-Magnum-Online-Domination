@@ -2,7 +2,6 @@ const GOAL_USERS = 60000;
 const usersChartEl = document.getElementById("usersChart");
 const channelsChartEl = document.getElementById("channelsChart");
 const channelsTrendChartEl = document.getElementById("channelsTrendChart");
-const goalGaugeChartEl = document.getElementById("goalGaugeChart");
 const channelsTable = document.getElementById("channelsTable");
 const sourcesTable = document.getElementById("sourcesTable");
 const pagesTable = document.getElementById("pagesTable");
@@ -39,7 +38,6 @@ const themeToggle = document.getElementById("themeToggle");
 let usersChart;
 let channelsChart;
 let channelsTrendChart;
-let goalGaugeChart;
 
 // Theme management
 function initTheme() {
@@ -69,23 +67,34 @@ function toggleTheme() {
   if (usersChart) usersChart.destroy();
   if (channelsChart) channelsChart.destroy();
   if (channelsTrendChart) channelsTrendChart.destroy();
-  if (goalGaugeChart) goalGaugeChart.destroy();
   usersChart = null;
   channelsChart = null;
   channelsTrendChart = null;
-  goalGaugeChart = null;
   renderCharts(lastData);
 }
 
 function getChartColors() {
   const isDark = document.body.classList.contains("dark-theme");
   return {
-    textColor: isDark ? "#e5eaf1" : "#0f1a2a",
-    gridColor: isDark ? "#2d3d4f" : "#eef2f8",
+    isDark,
+    textColor: isDark ? "#ffffff" : "#0f1a2a",
+    gridColor: isDark ? "#1a2a3a" : "#eef2f8",
     primaryColor: isDark ? "#60a5fa" : "#2251ff",
     primaryAlpha: isDark ? "rgba(96, 165, 250, 0.2)" : "rgba(34, 81, 255, 0.1)",
+    backgroundColor: isDark ? "#0a1117" : "#ffffff",
   };
 }
+
+// Chart.js plugin to draw background
+const chartBackgroundPlugin = {
+  id: "chartBackground",
+  beforeDraw(chart) {
+    const bgColor = document.body.classList.contains("dark-theme") ? "#0a1117" : "#ffffff";
+    const ctx = chart.canvas.getContext("2d");
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(0, 0, chart.width, chart.height);
+  },
+};
 
 const translations = {
   ru: {
@@ -94,7 +103,9 @@ const translations = {
     tabOverview: "CEO Overview",
     tabMarketing: "Marketing",
     tabContent: "Content",
-    periodLabel: "Период",
+    periodLabel: "Період",
+    periodToday: "Сегодня",
+    periodYesterday: "Вчера",
     period7: "Последние 7 дней",
     period28: "Последние 28 дней",
     period31: "Последние 31 день",
@@ -172,6 +183,8 @@ const translations = {
     tabMarketing: "Marketing",
     tabContent: "Content",
     periodLabel: "Period",
+    periodToday: "Today",
+    periodYesterday: "Yesterday",
     period7: "Last 7 days",
     period28: "Last 28 days",
     period31: "Last 31 days",
@@ -371,7 +384,7 @@ function renderInsights(data) {
 
 function setDataStatus(state, text) {
   if (!dataStatus || !dataStatusValue) return;
-  dataStatus.classList.remove("ok", "error");
+  dataStatus.classList.remove("ok", "warn", "error");
   if (state) dataStatus.classList.add(state);
   dataStatusValue.textContent = text;
 }
@@ -460,7 +473,8 @@ function generateMockData(days, channel) {
 }
 
 function renderKpis(data) {
-  const progress = data.totalUsers / GOAL_USERS;
+  const monthlyForecast = Math.round((data.totalUsers / data.days) * 30);
+  const progress = monthlyForecast / GOAL_USERS;
   const sessionsPerUser = data.sessions / data.totalUsers;
   const newUsersShare = data.newUsers / data.totalUsers;
   const engagementRate = data.engagedSessions / data.sessions;
@@ -476,7 +490,6 @@ function renderKpis(data) {
   kpiGoalProgress.textContent = formatPercent(progress);
   kpiGoalBar.style.width = `${Math.min(progress * 100, 100)}%`;
 
-  const monthlyForecast = Math.round((data.totalUsers / data.days) * 30);
   kpiGoalForecast.textContent = `${t("forecastLabel")}: ${formatNumber(
     monthlyForecast
   )}${t("perMonthLabel")}`;
@@ -520,19 +533,52 @@ function renderCharts(data) {
     },
     options: {
       plugins: {
+        chartBackground: {},
         legend: { display: false },
         title: {
           display: true,
           text: t("usersLabel"),
-          color: colors.textColor,
+          color: "#ffffff",
           font: { size: 14, weight: 500 },
+        },
+        tooltip: {
+          backgroundColor: "rgba(10, 17, 23, 0.95)",
+          titleColor: "#ffffff",
+          bodyColor: "#ffffff",
+          borderColor: colors.primaryColor,
         },
       },
       scales: {
-        x: { display: false },
-        y: { grid: { color: colors.gridColor } },
+        x: {
+          display: true,
+          title: {
+            display: true,
+            text: "Date",
+            color: "#ffffff",
+            font: { size: 12, weight: 500 },
+          },
+          ticks: {
+            color: "#ffffff",
+            maxRotation: 45,
+            minRotation: 0,
+          },
+          grid: { color: "#1a2a3a", drawBorder: false },
+        },
+        y: {
+          title: {
+            display: true,
+            text: "Number of Users",
+            color: "#ffffff",
+            font: { size: 12, weight: 500 },
+          },
+          ticks: {
+            color: "#ffffff",
+          },
+          grid: { color: "#1a2a3a", drawBorder: false },
+        },
       },
     },
+    plugins: [chartBackgroundPlugin],
   });
 
   if (channelsChart) channelsChart.destroy();
@@ -555,10 +601,25 @@ function renderCharts(data) {
     },
     options: {
       plugins: {
-        legend: { position: "bottom" },
+        chartBackground: {},
+        legend: { 
+          position: "bottom",
+          labels: {
+            color: "#ffffff",
+            font: { size: 12, weight: 500 },
+            padding: 12,
+          },
+        },
+        tooltip: {
+          backgroundColor: "rgba(10, 17, 23, 0.95)",
+          titleColor: "#ffffff",
+          bodyColor: "#ffffff",
+          borderColor: colors.primaryColor,
+        },
       },
       cutout: "65%",
     },
+    plugins: [chartBackgroundPlugin],
   });
 
   const trendData = buildChannelsTrend(data);
@@ -571,67 +632,41 @@ function renderCharts(data) {
     },
     options: {
       plugins: {
-        legend: { position: "bottom" },
+        chartBackground: {},
+        legend: { 
+          position: "bottom",
+          labels: {
+            color: "#ffffff",
+            font: { size: 12, weight: 500 },
+            padding: 12,
+          },
+        },
         title: {
           display: true,
           text: t("channelsLabel"),
-          color: colors.textColor,
+          color: "#ffffff",
           font: { size: 14, weight: 500 },
+        },
+        tooltip: {
+          backgroundColor: "rgba(10, 17, 23, 0.95)",
+          titleColor: "#ffffff",
+          bodyColor: "#ffffff",
+          borderColor: colors.primaryColor,
         },
       },
       scales: {
         x: { stacked: true, display: false },
-        y: { stacked: true, grid: { color: colors.gridColor } },
+        y: { 
+          stacked: true, 
+          grid: { color: "#1a2a3a", drawBorder: false },
+          ticks: { color: "#ffffff" },
+        },
       },
     },
+    plugins: [chartBackgroundPlugin],
   });
 
-  if (goalGaugeChart) goalGaugeChart.destroy();
-  const progress = data.totalUsers / GOAL_USERS;
-  goalGaugeChart = new Chart(goalGaugeChartEl, {
-    type: "doughnut",
-    data: {
-      labels: [t("kpiGoalLabel"), t("remainingLabel")],
-      datasets: [
-        {
-          data: [Math.min(progress, 1), Math.max(1 - progress, 0)],
-          backgroundColor: [colors.primaryColor, colors.gridColor],
-          borderWidth: 0,
-        },
-      ],
-    },
-    options: {
-      cutout: "75%",
-      plugins: {
-        legend: { display: false },
-        tooltip: { enabled: false },
-        title: {
-          display: true,
-          text: t("kpiGoalLabel"),
-          color: colors.textColor,
-          font: { size: 14, weight: 500 },
-        },
-      },
-      animation: {
-        onComplete: function(animation) {
-          const chart = animation.chart;
-          const ctx = chart.ctx;
-          const width = chart.width;
-          const height = chart.height;
-          const fontSize = (height / 114).toFixed(2);
-          ctx.restore();
-          ctx.font = fontSize + "em sans-serif";
-          ctx.textBaseline = "middle";
-          ctx.fillStyle = colors.textColor;
-          const text = formatPercent(progress);
-          const textX = Math.round((width - ctx.measureText(text).width) / 2);
-          const textY = height / 2;
-          ctx.fillText(text, textX, textY);
-          ctx.save();
-        }
-      }
-    },
-  });
+
 }
 
 function renderTables(data) {
@@ -825,6 +860,19 @@ async function loadDashboard() {
   try {
     const data = await fetchDashboardData(rangeValue, channel, property);
     lastData = data;
+    
+    // Check if data is available
+    if (!data.totalUsers || data.totalUsers === 0) {
+      const propertyName = propertySelect.options[propertySelect.selectedIndex].text;
+      setDataStatus(
+        "warn",
+        currentLanguage === "ru"
+          ? `⚠️ ${propertyName} — нет данных за выбранный период`
+          : `⚠️ ${propertyName} — No data for this period`
+      );
+      return;
+    }
+    
     renderKpis(data);
     renderCharts(data);
     renderTables(data);
@@ -839,11 +887,12 @@ async function loadDashboard() {
       `GA4 API • ${formatNumber(data.totalUsers)} • ${timeLabel}`
     );
   } catch (error) {
+    const propertyName = propertySelect.options[propertySelect.selectedIndex].text;
     setDataStatus(
       "error",
       currentLanguage === "ru"
-        ? "Ошибка API — проверьте сервер"
-        : "API error — check server"
+        ? `⚠️ ${propertyName} — Ошибка API`
+        : `⚠️ ${propertyName} — API error`
     );
     if (!lastData) return;
     renderKpis(lastData);
