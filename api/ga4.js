@@ -36,6 +36,16 @@ if (process.env.GA4_SERVICE_ACCOUNTS_JSON) {
   }
 }
 
+// Load domain mappings
+let domainMap = {};
+if (process.env.GA4_DOMAINS_JSON) {
+  try {
+    domainMap = JSON.parse(process.env.GA4_DOMAINS_JSON);
+  } catch (e) {
+    console.error("Failed to parse GA4_DOMAINS_JSON");
+  }
+}
+
 // Load service account credentials from JSON files
 let endlessCredentials = {};
 let anyoaCredentials = {};
@@ -255,7 +265,7 @@ async function fetchPropertyData(propertyId, propertyKey, days, channel, startDa
       { name: "engagementRate" },
       { name: "userEngagementDuration" },
     ],
-    dimensions: [{ name: "pageTitle" }],
+    dimensions: [{ name: "pageTitle" }, { name: "pagePath" }],
     orderBys: [{ metric: { metricName: "activeUsers" }, descending: true }],
     limit: 10,
     ...(dimensionFilter ? { dimensionFilter } : {}),
@@ -268,11 +278,12 @@ async function fetchPropertyData(propertyId, propertyKey, days, channel, startDa
     const totalEngagement = toNumber(row.metricValues?.[3]?.value);
     const avgEngagement = activeUsers ? totalEngagement / activeUsers : 0;
     return [
-      row.dimensionValues?.[0]?.value || "/",
+      row.dimensionValues?.[0]?.value || "/",  // pageTitle
       activeUsers,
       engaged,
       avgEngagement,
       engagementRate,
+      row.dimensionValues?.[1]?.value || "/",  // pagePath
     ];
   });
 
@@ -310,6 +321,7 @@ async function fetchPropertyData(propertyId, propertyKey, days, channel, startDa
     sources,
     pages,
     channelsTrend,
+    domain: domainMap[propertyKey] || "",
   };
 }
 

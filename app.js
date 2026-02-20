@@ -127,6 +127,7 @@ const translations = {
     dayLabel: "День",
     sourcesHeader: "Источник / Канал",
     pagesHeader: "Страница",
+    pageUrlHeader: "URL",
     usersHeader: "Пользователи",
     engagementHeader: "Вовлеченность",
     engagedHeader: "Вовлеченные",
@@ -226,6 +227,7 @@ const translations = {
     dayLabel: "Day",
     sourcesHeader: "Source / Medium",
     pagesHeader: "Page path",
+    pageUrlHeader: "URL",
     usersHeader: "Users",
     engagementHeader: "Engagement",
     engagedHeader: "Engaged",
@@ -735,7 +737,15 @@ function renderTable(container, headers, rows) {
   rows.forEach((row) => {
     const rowEl = document.createElement("div");
     rowEl.className = "table-row";
-    rowEl.innerHTML = row.map((cell) => `<div>${cell}</div>`).join("");
+    rowEl.innerHTML = row
+      .map((cell) => {
+        // Handle URL objects (with link property)
+        if (typeof cell === "object" && cell?.link) {
+          return `<div><a href="${cell.link}" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: underline; cursor: pointer;">${cell.text}</a></div>`;
+        }
+        return `<div>${cell}</div>`;
+      })
+      .join("");
     container.appendChild(rowEl);
   });
 }
@@ -926,14 +936,18 @@ function renderTables(data) {
     pagesTable,
     [
       t("pagesHeader"),
+      t("pageUrlHeader"),
       t("usersHeader"),
       t("engagedHeader"),
       t("avgEngagementHeader"),
     ],
     (data.pages || []).map((p) => {
+      const pagePath = p[5] || "/";
+      const fullUrl = data.domain ? data.domain + pagePath : pagePath;
       if (p.length >= 5) {
         return [
           p[0],
+          { link: fullUrl, text: pagePath },
           formatNumber(p[1]),
           formatNumber(p[2]),
           Number.isFinite(Number(p[3]))
@@ -941,7 +955,13 @@ function renderTables(data) {
             : "—",
         ];
       }
-      return [p[0], formatNumber(p[1]), "—", "—"];
+      return [
+        p[0],
+        { link: fullUrl, text: pagePath },
+        formatNumber(p[1]),
+        "—",
+        "—",
+      ];
     })
   );
 
